@@ -47,8 +47,8 @@
     <!-- 扭蛋機 -->
     <button
       class="relative inline-block select-none transition-opacity disabled:pointer-events-none"
-      :class="[{ shake: isShaking }, 'cursor-pointer']"
-      :disabled="isShaking || loading || (user && cards.length === 0)"
+      :class="[{ shake: isShaking }, drawLimitReached ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer']"
+      :disabled="isShaking || loading || (user && (cards.length === 0 || drawLimitReached))"
       @click="handleDraw"
     >
       <img
@@ -58,9 +58,12 @@
       />
     </button>
 
-    <!-- <p v-if="drawnToday" class="text-secondary-400 text-sm bg-white/70 px-4 py-2 rounded-full">
-      今天已經抽過囉！明天再來 ♡
-    </p> -->
+    <p v-if="user && drawLimitReached" class="text-secondary-400 text-sm bg-white/70 px-4 py-2 rounded-full">
+      今天已經抽過 {{ MAX_DAILY_DRAWS }} 次囉！明天再來 ♡
+    </p>
+    <p v-else-if="user && !drawLimitReached" class="text-secondary-300 text-xs bg-white/60 px-3 py-1 rounded-full">
+      今天還可以抽 {{ MAX_DAILY_DRAWS - drawCount }} 次
+    </p>
 
     <p v-if="errorMessage" class="text-red-400 text-sm bg-white/70 px-4 py-1 rounded-full">
       {{ errorMessage }}
@@ -118,7 +121,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import sanrioBg from "../assets/images/sanrio.jpg";
 import eggMachine from "../assets/images/egg_machine.webp";
 import { supabase, CARDS_BUCKET } from "../lib/supabase";
@@ -133,22 +136,37 @@ const isShaking = ref(false);
 const errorMessage = ref("");
 const imagesReady = ref(false);
 const loadProgress = ref(0);
-const drawnToday = ref(false);
+const drawCount = ref(0);
 const systemHasCards = ref(true);
 
-const DRAW_KEY = "last_draw_date";
+const MAX_DAILY_DRAWS = 3;
+const drawLimitReached = computed(() => drawCount.value >= MAX_DAILY_DRAWS);
 
 function todayString() {
   return new Date().toLocaleDateString("zh-TW");
 }
 
-function checkDrawnToday() {
-  // drawnToday.value = localStorage.getItem(DRAW_KEY) === todayString();
+function drawKey() {
+  return `draw_count_${user.value?.id ?? "anonymous"}`;
 }
 
-function markDrawnToday() {
-  // localStorage.setItem(DRAW_KEY, todayString());
-  // drawnToday.value = true;
+function checkDrawCount() {
+  const raw = localStorage.getItem(drawKey());
+  if (!raw) {
+    drawCount.value = 0;
+    return;
+  }
+  try {
+    const { date, count } = JSON.parse(raw);
+    drawCount.value = date === todayString() ? count : 0;
+  } catch {
+    drawCount.value = 0;
+  }
+}
+
+function incrementDrawCount() {
+  drawCount.value += 1;
+  localStorage.setItem(drawKey(), JSON.stringify({ date: todayString(), count: drawCount.value }));
 }
 
 function preloadImage(src, onProgress) {
@@ -196,7 +214,7 @@ async function handleDraw() {
     await signInWithGoogle();
     return;
   }
-  if (isShaking.value || loading.value || cards.value.length === 0/* || drawnToday.value*/) return;
+  if (isShaking.value || loading.value || cards.value.length === 0 || drawLimitReached.value) return;
   currentCard.value = null;
   isShaking.value = true;
 
@@ -205,13 +223,17 @@ async function handleDraw() {
 
   const index = Math.floor(Math.random() * cards.value.length);
   currentCard.value = cards.value[index];
-  markDrawnToday();
+  incrementDrawCount();
 }
 
 // 登入狀態就緒後才載卡（useAuth 的 session 是非同步取得的）
 watch(user, (newUser) => {
-  if (newUser) loadCards();
-  else cards.value = [];
+  if (newUser) {
+    loadCards();
+    checkDrawCount();
+  } else {
+    cards.value = [];
+  }
 })
 
 onMounted(async () => {
@@ -226,7 +248,7 @@ onMounted(async () => {
     preloadImage(eggMachine, onProgress),
   ]);
   imagesReady.value = true;
-  checkDrawnToday();
+  checkDrawCount();
 });
 </script>
 
