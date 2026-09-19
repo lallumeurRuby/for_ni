@@ -39,7 +39,7 @@
       <p class="text-secondary-400 mt-2">♡〜٩( ˃́▿˂̀ )۶〜♡</p>
     </header>
 
-    <!-- 未登入提示 -->
+    <!-- 未登入提示文字 -->
     <p v-if="!user" class="text-secondary-400 text-xs bg-white/60 px-3 py-1 rounded-full">
       點擊扭蛋機以 Google 登入 ♡
     </p>
